@@ -1,3 +1,6 @@
 logs/
 wandb/
 *.pyc
+.submitit/
+.slurm/
+.slurm_logs/
