@@ -24,30 +24,30 @@ import json
 import logging
 import simple_parsing
 from dataset import dataset_registry
-from training_logic import registry as model_registry, TrainingLogic
+from training_logic import registry, TrainingLogic
 import torch.distributed as dist
-if not torch.cuda.is_available(): 
-    raise RuntimeError('Could not find gpu.')
+
 
 
 @dataclass
 class Config:
+    """
+    Training
+    """
+
     id: str # A unique id for the experiment
     group: str = 'default' # A group for the experiments
     checkpoint_dir: str | None = None # Directory to store checkpoints. If None, one will be created automatically. 
     distributed_training: bool = False # whether to use multiprocessing
+    torch_compile: bool = True # whether to use torch.compile
 
     wandb: bool = True
     debug: bool = False
 
-    lr: float = 0.001
-    batch_size: int = 256
+    lr: float = 0.001 
+    batch_size: int = 64
     n_epochs: int = 100
-    model: model_registry.BaseConfig = simple_parsing.subgroups(
-        {
-            name: model_registry.get_config(name) for name in model_registry.list_constructibles()     
-        }, default='premade'
-    )
+    model: tp.Literal[*tuple(registry.keys())] = tuple(registry.keys())[0]
     model_path: str | None = None  # optional path to a model to load
     vocab_path: str = "data/vocab_1024.json"  # optional path to a vocab to load
 
@@ -63,6 +63,8 @@ class Trainer:
         self.args = args 
 
     def setup(self): 
+        if not torch.cuda.is_available(): 
+            raise RuntimeError('Could not find gpu.')
         # First thing we do is check for distributed training
         if args.distributed_training: 
             VALID_ENVIRONMENT = (
@@ -78,6 +80,8 @@ class Trainer:
         else:
             self.rank = 0 
             self.world_size = 1 
+        torch.cuda.set_device(self.rank)
+        torch.cuda.empty_cache()
 
         # =========== BASIC LOGGING ================
         self.logger = logging.getLogger('Trainer')
@@ -91,6 +95,10 @@ class Trainer:
             self.logger.addHandler(stream_handler)
         else: 
             self.logger.setLevel(logging.CRITICAL)
+        self.logger.info(f"Starting training.")
+        self.logger.info(f"Using {self.world_size} processes.")
+        self.logger.info(f"Using rank {self.rank}.")
+        self.logger.info(f"Using args: {args}.")
         self.logger.info("Beginning setup.")
 
         # ============ EXPERIMENT DIRECTORY ============
@@ -102,6 +110,7 @@ class Trainer:
             if self.args.id in exp_dir_lookup: 
                 self.logger.info(f"Found experiment directory for id {self.args.id}.")
                 self.args.exp_dir = exp_dir_lookup[self.args.id]
+                self.args.checkpoint_dir = join(self.args.exp_dir, 'checkpoints')
             else: 
                 self.logger.info(f"Could not find experiment directory for id {self.args.id}.")
                 self.logger.info(f"Creating new experiment directory.")
@@ -109,8 +118,12 @@ class Trainer:
                     "logs", self.args.group, f"{datetime.now().strftime('%Y-%m-%d_%H:%M')}_{coolname.generate_slug(2)}"
                 )
                 self.args.exp_dir = generated_exp_dir
-                self.logger.info(f"New experiment directory: {generated_exp_dir}")
                 os.makedirs(generated_exp_dir)
+                self.logger.info(f"New experiment directory: {generated_exp_dir}")
+                exp_dir_lookup[self.args.id] = generated_exp_dir
+                with open('exp_dir_lookup.json', 'w') as f: 
+                    json.dump(exp_dir_lookup, f)
+                    self.logger.info(f"Saved experiment directory lookup to exp_dir_lookup.json.")
                 if self.args.checkpoint_dir is not None: 
                     os.symlink(
                         self.args.checkpoint_dir,
@@ -119,10 +132,9 @@ class Trainer:
                     )
                 else: 
                     os.makedirs(join(generated_exp_dir, 'checkpoints'))
-                exp_dir_lookup[self.args.id] = generated_exp_dir
-                with open('exp_dir_lookup.json', 'w') as f: 
-                    json.dump(exp_dir_lookup, f)
-                    self.logger.info(f"Saved experiment directory lookup to exp_dir_lookup.json.")
+                    self.args.checkpoint_dir = join(generated_exp_dir, 'checkpoints')
+                    
+                
                 # TODO - make config serializable
                 # with open(join(args.exp_dir, 'config.json'), 'w') as f: 
                 #     self.logger.info(f"Saved experiment config to {join(args.exp_dir, 'config.json')}.")
@@ -172,10 +184,16 @@ class Trainer:
         self.logger.info("Setting up model.")
         self.model, self.training_logic = model_registry.build(args.model, tokenizer=self.tokenizer)
         self.training_logic: TrainingLogic
-        self.model.to(self.rank)
+        self.model.to(self.rank) 
+        self.training_logic.model_info(self.model, self.tokenizer, self.rank, self.args.batch_size)
+    
+        # if self.args.torch_compile:
+        #     torch.compile(self.model)
         if self.args.distributed_training: 
             self.model = nn.parallel.DistributedDataParallel(self.model, device_ids=[self.rank])
+            self._non_ddp_model = self.model.module
         self.logger.info(f"Built model {self.model.__class__}.")
+        
 
         # =========== OPTIMIZER, SCALER, SCHEDULER ==================
         self.logger.info("Setting up optimizer.")
@@ -194,22 +212,30 @@ class Trainer:
 
     def train(self):
         self.logger.info("Beginning training.")
-        for epoch in range(1, args.n_epochs):
+        for epoch in range(1, self.args.n_epochs):
             t1 = datetime.now()
             train_loss = self.train_epoch(self.train_loader, self.model, self.opt, self.scaler)
+            t2 = datetime.now()
             val_loss = self.val_epoch(self.test_loader, self.model)
             self.scheduler.step(val_loss)
-            t2 = datetime.now()
-
+            t3 = datetime.now()
+            if self.rank == 0:
+                prediction = self.training_logic.predict(
+                    self._non_ddp_model if self.args.distributed_training else self.model, self.tokenizer, self.rank, prompt=None, max_len=500)
+            else: 
+                prediction = None
+            if self.args.distributed_training:
+                dist.barrier()
+            t4 = datetime.now()
             msg =f"""
 =========== EPOCH {epoch} =========
-TIME ELAPSED: {t2 - t1} 
+TIME ELAPSED: train - {t2 - t1}, val - {t3 - t2}, predict - {t4 - t3}, total - {t4 - t1}
 TRAIN LOSS: {train_loss}
 VAL LOSS: {val_loss}
 GENERATED TEXT:
 
 
-{self.training_logic.predict(self.model, self.tokenizer, self.rank, prompt=None, max_len=500)}
+{prediction}
 
 
 ========================="""
@@ -228,8 +254,8 @@ GENERATED TEXT:
                 self.logger.info(f"New best val loss: from {self.best_val_loss} to {val_loss}.")
                 self.best_val_loss = val_loss
                 if self.rank == 0:
-                    torch.save(self.model.state_dict(), join(args.checkpoint_dir, "best_model.pt"))
-                    if args.wandb:
+                    torch.save(self.model.state_dict(), join(self.args.checkpoint_dir, "best_model.pt"))
+                    if self.args.wandb:
                         wandb.run.summary["best_val_loss"] = self.best_val_loss
                     self.logger.info("Saved model!")
 
@@ -245,8 +271,11 @@ GENERATED TEXT:
                 )
             
             total += 1
-
             scaler.scale(loss).backward()
+
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()

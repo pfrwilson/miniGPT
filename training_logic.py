@@ -25,13 +25,16 @@ from torchzero.utils.tokenizer import Tokenizer
 import einops
 import typing as tp 
 import logging
+from torchzero.nn import TransformerForSequenceGeneration
 
 
 # ============ Model registry etc ============
-from torchzero.utils.registry import Registry
-registry = Registry()
+registry = {}
+def _register_model(fn):
+    registry[fn.__name__] = fn
+    return fn
 
-@registry.register_factory
+@_register_model
 def lstm_small(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -44,7 +47,7 @@ def lstm_small(tokenizer):
     return model, logic
 
 
-@registry.register_factory
+@_register_model
 def lstm_med(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -56,7 +59,8 @@ def lstm_med(tokenizer):
     logic = LSTMTrainingLogic()
     return model, logic
 
-@registry.register_factory
+
+@_register_model
 def lstm_large(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -68,100 +72,168 @@ def lstm_large(tokenizer):
     logic = LSTMTrainingLogic()
     return model, logic
 
-@registry.register_factory
+
+@_register_model
 def debug_gpt(tokenizer):
-    return TrainableGPTModel(
-        n_layers=1,
-        n_heads=1,
-        d_model=64,
-        d_feed_forward=64,
-        dropout=0.1,
-        tokenizer=tokenizer,
-        max_len=512,
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 1,
+        n_heads = 1,
+        d_model = 64,
+        d_feed_forward = 64,
+        dropout = 0.1,
+        max_len=512, 
+        pos_emb = 'abs',
+        use_rel_pos_emb_key = False, 
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
 
 
-@registry.register_factory
+@_register_model
 def debug_gpt_rel_pos_v0(tokenizer): 
-    return TrainableGPTModel(
-        n_layers=1,
-        n_heads=1,
-        d_model=64,
-        d_feed_forward=64,
-        dropout=0.1,
-        tokenizer=tokenizer,
-        max_len=512,
-        pos_emb='rel'
-    )
-
-
-@registry.register_factory
-def debug_gpt_rel_pos_v1(tokenizer): 
-    return TrainableGPTModel(
-        n_layers=1,
-        n_heads=1,
-        d_model=64,
-        d_feed_forward=64,
-        dropout=0.1,
-        tokenizer=tokenizer,
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 1,
+        n_heads = 1,
+        d_model = 64,
+        d_feed_forward = 64,
+        dropout = 0.1,
         max_len=512,
         pos_emb='rel',
-        use_rel_pos_emb_key=True
+        rel_pos_emb_mode='key',
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
 
 
-@registry.register_factory
+@_register_model
+def debug_gpt_rel_pos_v1(tokenizer): 
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 1,
+        n_heads = 1,
+        d_model = 64,
+        d_feed_forward = 64,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='rel',
+        rel_pos_emb_mode='both'
+    )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
+
+
+@_register_model
 def debug_gpt_v1(tokenizer): 
-    return TrainableGPTModel(
-        n_layers=6, 
-        n_heads=2, 
-        d_model=64, 
-        d_feed_forward=32, 
-        dropout=0.1,
-        tokenizer=tokenizer, 
-        max_len=512
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 6,
+        n_heads = 2,
+        d_model = 64,
+        d_feed_forward = 32,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='abs',
+        use_rel_pos_emb_key=False
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
 
 
-@registry.register_factory
+@_register_model
 def gpt_v0(tokenizer):
-    return TrainableGPTModel(
-        n_layers=4,
-        n_heads=4,
-        d_model=128,
-        d_feed_forward=128,
-        dropout=0.1,
-        tokenizer=tokenizer,
-        max_len=512
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 4,
+        n_heads = 4,
+        d_model = 128,
+        d_feed_forward = 128,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='abs',
+        use_rel_pos_emb_key=False
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
 
 
-@registry.register_factory
+@_register_model
 def gpt_v1(tokenizer): 
-    return TrainableGPTModel(
-        n_layers=6, 
-        n_heads=8, 
-        d_model=512, 
-        d_feed_forward=512, 
-        dropout=0.1, 
-        tokenizer=tokenizer, 
-        max_len=512
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 6,
+        n_heads = 8,
+        d_model = 512,
+        d_feed_forward = 512,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='abs',
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
 
 
-@registry.register_factory
-def gpt_v1_rel_pos(tokenizer): 
-    return TrainableGPTModel(
-        n_layers=6, 
-        n_heads=8, 
-        d_model=512, 
-        d_feed_forward=512, 
-        dropout=0.1, 
-        tokenizer=tokenizer, 
-        max_len=512, 
-        pos_emb='rel', 
-        use_rel_pos_emb_key=True
+@_register_model
+def gpt_v1_rel_pos_v(tokenizer): 
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 6,
+        n_heads = 8,
+        d_model = 512,
+        d_feed_forward = 512,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='rel',
+        rel_pos_emb_mode='value'
     )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
+
+
+@_register_model
+def gpt_v1_rel_pos_k(tokenizer): 
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 6,
+        n_heads = 8,
+        d_model = 512,
+        d_feed_forward = 512,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='rel',
+        rel_pos_emb_mode='key'
+    )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
+
+
+
+@_register_model
+def gpt_v2_rel_pos_both(tokenizer): 
+    model = TransformerForSequenceGeneration(
+        vocab_size = len(tokenizer),
+        pad_idx = tokenizer.token2idx["<PAD>"],
+        n_layers = 6,
+        n_heads = 8,
+        d_model = 256,
+        d_feed_forward = 512,
+        dropout = 0.1,
+        max_len=512,
+        pos_emb='rel',
+        rel_pos_emb_mode='both'
+    )
+    logic = GPTTRainingLogic(max_len=512)
+    return model, logic
+
 
 # ================ TRAINABLE MODEL IMPLEMENTATIONS =============================
 
@@ -183,6 +255,11 @@ class TrainingLogic:
         """
         Defines the logic for text endless text 
         generation through a stream.
+        """
+    
+    def model_info(self, model, tokenizer, device, batch_size): 
+        """
+        Returns torchinfo summary of the model.
         """
 
 
@@ -288,8 +365,87 @@ class LSTMTrainingLogic(TrainingLogic):
 
 
 class GPTTRainingLogic(TrainingLogic):
-    def step(self, model, tokenizer, batch, device):
-        
+    def __init__(self, max_len=500):
+        self.max_len = max_len
+
+    def step(self, model: TransformerForSequenceGeneration, tokenizer, batch, device):
+        X = tokenizer.encode_batch(
+            batch['text'], 
+            pad='right', 
+            add_start_token=True, 
+            max_length=self.max_len,
+            random_offset=True,
+            out_fmt='torch',
+        )
+        logging.debug(
+            f'Batch:\n{X}'
+        )
+        logging.debug([tokenizer.decode(encoding.tolist()) for encoding in X]) 
+        X = X.to(device)
+        # X is currently shape B * N
+        # with entries being the index of the token.
+
+        # To match the input tokens with their target ouputs,
+        # we need to shift the targets forward and truncate the outputs like so:
+        # tokens:   <PAD> | <PAD> | <START> | h | e | l | l | o |
+        # input:    <PAD> | <PAD> | <START> | h | e | l | l | -
+        # target:     -       -   |    h    | e | l | l | o |
+
+        targets = X[:, 1:]  # shift inputs backward compared to targets
+        X = X[:, :-1] 
+
+        # put it through the model
+        X = model(X)
+
+        # cross entropy loss expects the class scores to be in the second dimension
+        X = einops.rearrange(X, "b n score -> b score n")
+        loss = F.cross_entropy(X, targets)
+        return loss
+    
+    def predict(self, model: TransformerForSequenceGeneration, tokenizer, device, prompt=None, max_len=500):
+        output = ""
+        n_tokens = 0
+
+        seed = tokenizer.START_TOKEN
+        if prompt is not None:
+            seed = seed + prompt
+
+        X = torch.tensor(tokenizer.encode(seed)).unsqueeze(0) # Shape 1, (prompt_len + 1)
+        X = X.to(device)
+        inp = X
+
+        while n_tokens < max_len:
+            X = inp 
+            B, N = X.shape 
+            if N > self.max_len: 
+                X = X[:, -max_len:]
+            
+            # model forward pass: B, N -> B, N, T
+            X = model(X)
+            B, N, T = X.shape
+
+            # mask scores for special tokens
+            X[:, :, tokenizer.token2idx["<START>"]] = -1e12
+            X[:, :, tokenizer.token2idx["<UNK>"]] = -1e12
+            X[:, :, tokenizer.token2idx["<PAD>"]] = -1e12
+            X = X.softmax(-1) # probabilities for each token
+            X = X[:, -1, :] # we only care about the last token - shape B, T
+            X = torch.multinomial(
+                X, 1
+            )  # sample from multinomial distribution - shape B, 1
+            predicted_token = X.item()
+            output = output + tokenizer.decode([predicted_token])
+            inp = torch.cat([inp, X], dim=1)
+            n_tokens += 1
+
+        return output
+
+    def model_info(self, model, tokenizer, device, batch_size):
+        batch = torch.randint(0, len(tokenizer), (batch_size, self.max_len))
+        batch = batch.to(device)
+        import torchinfo
+        torchinfo.summary(model, input_data=batch)
+
 
 if False: 
     class TrainableLSTMClassifier(TrainableModel):
@@ -403,7 +559,7 @@ if False:
                 current_char = y[:, -1]  # model expects input of shape (B, )
 
                 y, state = self.model(current_char, **state)
-
+        
 
     class TrainableGPTModel(TrainableModel):
         def __init__(

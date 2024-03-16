@@ -2,6 +2,7 @@ import torch
 import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from time import time
 
 
 def worker(rank, world_size):

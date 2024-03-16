@@ -69,6 +69,13 @@ class Bible:
         return TextFileDataset('data/bible.txt', chunk_length=config.chunk_length)
     
 
+@dataset_registry.register_factory
+class BookCorpus: 
+    @dataclass
+    class Config:
+        name = 'bookcorpus'
+        
+
 # if __name__ == "__main__": 
 #     print(DATASETS)
 #     print(DATASET_CONFIGS)
