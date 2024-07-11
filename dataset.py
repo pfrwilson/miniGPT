@@ -1,7 +1,8 @@
 from torch.utils.data import Dataset
 from dataclasses import dataclass
 import logging
-
+from utils.registry import Registry
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger("DatasetFactory")
 
@@ -37,45 +38,38 @@ class TextFileDataset(Dataset):
         return {"text": raw_text}
 
 
-from torchzero.utils.registry import Registry
-dataset_registry = Registry()
+dataset_factories = Registry()
 
 
-@dataset_registry.register_factory
-class openwebtext():
-    @dataclass
-    class Config: 
-        name = 'openwebtext'
-        item_limit: int | None = None, # Optionally specify a limit to the number of items included in the dataset!
+@dataclass
+class BaseDatasetFactory:
+    @abstractmethod 
+    def __call__(self): 
+        ...
 
-    def __call__(self, cfg):
+
+@dataset_factories.register('openwebtext')
+@dataclass
+class OpenWebText(BaseDatasetFactory): 
+    item_limit: int | None = None 
+
+    def __call__(self): 
         logger.info(f"Instantiating OpenWebText... this could take a few seconds!")
         from datasets import load_from_disk
         dataset = load_from_disk('/datasets/openwebtext')
         dataset = dataset['train']
-        if cfg.item_limit is not None: 
+        if self.item_limit is not None: 
             from torch.utils.data import Subset
-            dataset = Subset(dataset, list(range(cfg.item_limit)))
+            dataset = Subset(dataset, list(range(self.item_limit)))
         return dataset
 
-@dataset_registry.register_factory
-class Bible:
-    @dataclass
-    class Config: 
-        name = 'bible'
-        chunk_length: int = 500
+@dataset_factories.register('textfile_dataset')
+@dataclass
+class TextFileDatasetFactory(BaseDatasetFactory):
+    path: str = 'data/bible.txt'
+    chunk_length: int = 500
 
-    def __call__(self, config: Config):
-        return TextFileDataset('data/bible.txt', chunk_length=config.chunk_length)
+    def __call__(self):
+        return TextFileDataset(self.path, chunk_length=self.chunk_length)
     
-
-@dataset_registry.register_factory
-class BookCorpus: 
-    @dataclass
-    class Config:
-        name = 'bookcorpus'
         
-
-# if __name__ == "__main__": 
-#     print(DATASETS)
-#     print(DATASET_CONFIGS)

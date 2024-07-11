@@ -23,7 +23,7 @@ import rich
 import json
 import logging
 import simple_parsing
-from dataset import dataset_registry
+from dataset import dataset_factories, BaseDatasetFactory
 from training_logic import registry, TrainingLogic
 import torch.distributed as dist
 
@@ -51,9 +51,9 @@ class Config:
     model_path: str | None = None  # optional path to a model to load
     vocab_path: str = "data/vocab_1024.json"  # optional path to a vocab to load
 
-    dataset: dataset_registry.BaseConfig = simple_parsing.subgroups(
-        {name: dataset_registry.get_config(name) for name in dataset_registry.list_constructibles()}, 
-        default=dataset_registry.list_constructibles()[0])
+    dataset: BaseDatasetFactory = simple_parsing.subgroups(
+        dataset_factories.dict(), default=dataset_factories.list()[-1]
+    )
 
     exp_dir = None 
 

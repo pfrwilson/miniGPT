@@ -17,24 +17,24 @@ import json
 from datetime import datetime
 import sys
 from argparse import ArgumentParser
-from torchzero.nn import LSTMClassifier
+from models.rnn import LSTMClassifier
 from torch import nn
 import torch
 from torch.nn import functional as F
-from torchzero.utils.tokenizer import Tokenizer
+from utils.tokenizer import Tokenizer
 import einops
 import typing as tp 
 import logging
-from torchzero.nn import TransformerForSequenceGeneration
+from models.transformer import TransformerForSequenceGeneration
 
 
 # ============ Model registry etc ============
 registry = {}
-def _register_model(fn):
+def register_model(fn):
     registry[fn.__name__] = fn
     return fn
 
-@_register_model
+@register_model
 def lstm_small(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -47,7 +47,7 @@ def lstm_small(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def lstm_med(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -60,7 +60,7 @@ def lstm_med(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def lstm_large(tokenizer):
     model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -73,7 +73,7 @@ def lstm_large(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def debug_gpt(tokenizer):
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -91,7 +91,7 @@ def debug_gpt(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def debug_gpt_rel_pos_v0(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -109,7 +109,7 @@ def debug_gpt_rel_pos_v0(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def debug_gpt_rel_pos_v1(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -127,7 +127,7 @@ def debug_gpt_rel_pos_v1(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def debug_gpt_v1(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -145,7 +145,7 @@ def debug_gpt_v1(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def gpt_v0(tokenizer):
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -163,7 +163,7 @@ def gpt_v0(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def gpt_v1(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -180,7 +180,7 @@ def gpt_v1(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def gpt_v1_rel_pos_v(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -198,7 +198,7 @@ def gpt_v1_rel_pos_v(tokenizer):
     return model, logic
 
 
-@_register_model
+@register_model
 def gpt_v1_rel_pos_k(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
@@ -217,7 +217,7 @@ def gpt_v1_rel_pos_k(tokenizer):
 
 
 
-@_register_model
+@register_model
 def gpt_v2_rel_pos_both(tokenizer): 
     model = TransformerForSequenceGeneration(
         vocab_size = len(tokenizer),
